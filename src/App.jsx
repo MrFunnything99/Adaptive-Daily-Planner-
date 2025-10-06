@@ -28,6 +28,8 @@ const DailyAdaptivePlanner = () => {
   const [editingTodo, setEditingTodo] = useState(null);
   const [editingProject, setEditingProject] = useState(null);
   const [editingHabit, setEditingHabit] = useState(null);
+  const [showReplaceModal, setShowReplaceModal] = useState(false);
+  const [replacingTodoId, setReplacingTodoId] = useState(null);
   
   const [newTodo, setNewTodo] = useState({ name: '', timeEstimateMinutes: 30, priority: 1, dueDate: '' });
   const [newProject, setNewProject] = useState({ name: '', totalHoursNeeded: 0, dueDate: '', priority: 1, hoursCompleted: 0, startDate: '' });
@@ -249,6 +251,30 @@ const DailyAdaptivePlanner = () => {
     setTodos(todos.filter(t => t.id !== id));
   };
 
+  const replaceTodo = (id) => {
+   setReplacingTodoId(id);
+  setShowReplaceModal(true);
+  };
+
+const confirmReplaceTodo = (newTodoId) => {
+  // Don't mark anything as skipped - just boost priority of the new task
+  // This lets users keep experimenting with different replacements
+  const updated = todos.map(t => {
+    // Give the replacement task top priority temporarily
+    if (t.id === newTodoId) {
+      return { ...t, priority: 0.5 }; // Lower number = higher priority
+    }
+    // Reset the task being replaced to normal priority
+    if (t.id === replacingTodoId) {
+      return { ...t, priority: Math.max(t.priority, 2) }; // Push it down
+    }
+    return t;
+  });
+  setTodos(updated);
+  setShowReplaceModal(false);
+  setReplacingTodoId(null);
+};
+
   const deleteProject = (id) => {
     setProjects(projects.filter(p => p.id !== id));
   };
@@ -324,6 +350,23 @@ const DailyAdaptivePlanner = () => {
       alert('All data cleared!');
     }
   };
+  const resetPlanning = () => {
+  if (confirm('Reset all planning changes? This will clear any temporary adjustments.')) {
+    // Reset any priority modifications and status changes back to defaults
+    const updated = todos.map(t => {
+      if (t.priority < 1 || t.status === 'skipped' || t.status === 'deferred') {
+        return {
+          ...t,
+          priority: Math.ceil(t.priority) || 2, // Reset fractional priorities
+          status: t.status === 'completed' ? 'completed' : 'pending' // Keep completed, reset others
+        };
+      }
+      return t;
+    });
+    setTodos(updated);
+  }
+};
+
 
   const handleSmartImport = () => {
     setIsImporting(true);
@@ -473,6 +516,59 @@ const generateDailyPlan = () => {
       }
     }
   });
+// Add pending to-dos
+todos.forEach(todo => {
+  if (todo.status === 'pending') {
+    let urgency = 'normal';
+    if (todo.dueDate) {
+      const dueDate = new Date(todo.dueDate);
+      const today = new Date(currentDate);
+      const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+      
+      if (daysUntilDue <= 0) urgency = 'critical';
+      else if (daysUntilDue <= 2) urgency = 'high';
+    }
+    
+    items.push({
+      id: 'todo-' + todo.id,
+      name: todo.name,
+      duration: todo.timeEstimateMinutes,
+      priority: todo.priority,
+      urgency: urgency,
+      type: 'todo',
+      itemId: todo.id
+    });
+  }
+});
+
+// Add projects that need work
+projects.forEach(project => {
+  if (project.hoursCompleted < project.totalHoursNeeded) {
+    const remainingHours = project.totalHoursNeeded - project.hoursCompleted;
+    const sessionLength = Math.min(120, remainingHours * 60); // Max 2 hour sessions
+    
+    let urgency = 'normal';
+    if (project.dueDate) {
+      const dueDate = new Date(project.dueDate);
+      const today = new Date(currentDate);
+      const daysUntilDue = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+      
+      if (daysUntilDue <= 3) urgency = 'critical';
+      else if (daysUntilDue <= 7) urgency = 'high';
+    }
+    
+    items.push({
+      id: 'project-' + project.id,
+      name: project.name,
+      duration: sessionLength,
+      priority: project.priority,
+      urgency: urgency,
+      type: 'project',
+      itemId: project.id
+    });
+  }
+});
+
 
   console.log('Items after habits:', items.length);
 
@@ -515,7 +611,7 @@ const generateDailyPlan = () => {
       }
     } else {
       console.log('  ✗ Not enough time (would extend past', minutesToTime(planEndTime), ')');
-      break;
+      continue;
     }
   }
 
@@ -619,20 +715,20 @@ const generateDailyPlan = () => {
               <p className="text-xs text-slate-500 mt-1">When are you available to work on your goals?</p>
             </div>
             <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-slate-600 mb-1">Transition Time</label>
-              <div className="flex items-center gap-2">
-                <input
+                 <label className="block text-xs font-medium text-slate-600 mb-1">Buffer Time</label>
+                  <div className="flex items-center gap-2">
+                  <input
                   type="number"
                   min="0"
-                  max="60"
-                  value={transitionTime}
-                  onChange={(e) => setTransitionTime(parseInt(e.target.value) || 0)}
-                  className="w-16 px-3 py-2 border border-slate-300 rounded-lg"
-                />
-                <span className="text-sm text-slate-600">min</span>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">Buffer between tasks</p>
-            </div>
+                    max="60"
+                       value={transitionTime}
+                       onChange={(e) => setTransitionTime(parseInt(e.target.value) || 0)}
+                                    className="w-16 px-3 py-2 border border-slate-300 rounded-lg"
+                       />
+                              <span className="text-sm text-slate-600">min</span>
+                              </div>
+                                 <p className="text-xs text-slate-500 mt-1">Scientists recommend 15-30 minutes between tasks</p>
+                                  </div>
             <div className="md:col-span-3">
               <div className="flex items-center justify-between mb-1 gap-2">
                 <label className="block text-xs font-medium text-slate-600 whitespace-nowrap">Time Blocks</label>
@@ -694,9 +790,67 @@ const generateDailyPlan = () => {
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:via-indigo-600 hover:to-purple-600 shadow-md transition-all"
           >
             AI Goal Interview
-          </button>
+          </button> <a 
+           href="https://docs.google.com/document/d/1UV7WTJkJurVmTKQgKAsfkEsfuo8-A2Ytq4mabn45caU/edit?usp=sharing"
+           target="_blank"
+           rel="noopener noreferrer"
+           className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          >
+           <Sparkles className="w-4 h-4" />
+           Best Practices
+          </a>
+          
         </div>
       </div>
+                {showReplaceModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+      <div className="flex justify-between mb-4">
+        <h3 className="text-xl font-bold">Replace with existing To-Do</h3>
+        <button onClick={() => { setShowReplaceModal(false); setReplacingTodoId(null); }}>
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+      
+      <p className="text-sm text-slate-600 mb-4">Select a to-do to schedule instead:</p>
+      
+      <div className="space-y-2">
+        {todos.filter(t => t.status === 'pending' && t.id !== replacingTodoId).length === 0 ? (
+          <p className="text-slate-500 text-sm">No other pending to-dos available</p>
+        ) : (
+          todos.filter(t => t.status === 'pending' && t.id !== replacingTodoId).map(todo => (
+            <button
+              key={todo.id}
+              onClick={() => confirmReplaceTodo(todo.id)}
+              className="w-full text-left p-3 bg-slate-50 rounded-lg border hover:bg-blue-50 hover:border-blue-300 transition-colors"
+            >
+              <div className="flex justify-between items-center">
+                <div>
+                  <h4 className="font-semibold">{todo.name}</h4>
+                  <p className="text-sm text-slate-600">
+                    {todo.timeEstimateMinutes} min • Priority {todo.priority}
+                  </p>
+                </div>
+                <span className={'text-xs px-2 py-1 rounded-full ' + getPriorityColor(todo.priority)}>
+                  P{todo.priority}
+                </span>
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+      
+      <div className="mt-4">
+        <button
+          onClick={() => setShowTodoForm(true)}
+          className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+        >
+          Or Create New To-Do
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {showBlockedTimeForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1032,11 +1186,23 @@ const generateDailyPlan = () => {
       {activeTab === 'today' && (
         <div className="space-y-6">
           <div className="bg-gradient-to-br from-blue-400 via-indigo-500 to-purple-500 rounded-xl p-6 text-white shadow-lg">
-            <h2 className="text-2xl font-bold mb-1">Today's Focus</h2>
-            <p className="text-blue-100">
-              {Math.floor(availableMinutes / 60)}h {availableMinutes % 60}m available
-            </p>
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold mb-1">Today's Focus</h2>
+                <p className="text-blue-100">
+                  {Math.floor(availableMinutes / 60)}h {availableMinutes % 60}m available
+                </p>
+              </div>
+              <button
+                onClick={resetPlanning}
+                className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg backdrop-blur-sm transition-all"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Reset Planning
+              </button>
+            </div>
           </div>
+
 
           {plan.length === 0 ? (
             <div className="bg-white rounded-xl p-12 text-center">
@@ -1065,14 +1231,24 @@ const generateDailyPlan = () => {
                         <h3 className="text-xl font-bold text-slate-900">{item.name}</h3>
                         <p className="text-sm text-slate-600">{item.duration} minutes</p>
                       </div>
-                      {!isCompleted && (
-                        <button 
+                     {!isCompleted && (
+                         <div className="flex gap-2">
+                         <button 
                           onClick={() => markComplete(item)} 
-                          className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                        >
-                          Done
-                        </button>
-                      )}
+                            className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                            >
+                                 Done
+                                  </button>
+                                  {item.type === 'todo' && (
+                              <button 
+                                 onClick={() => replaceTodo(item.itemId)} 
+                                    className="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                                >
+                                  Replace
+                                 </button>
+                                  )}
+                                     </div>
+                                    )}
                     </div>
                   </div>
                 );
