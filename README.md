@@ -13,4 +13,5 @@ https://my-planner-red.vercel.app/
 
 ## Install locally
 npm install
+
 npm run dev
