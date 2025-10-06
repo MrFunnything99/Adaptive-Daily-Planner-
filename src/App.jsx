@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, CheckCircle, Plus, Trash2, Edit2, Save, X, Sparkles, Download, Upload, RefreshCw } from 'lucide-react';
-import { Analytics } from '@vercel/analytics/next';
 // @ts-nocheck
 
 const DailyAdaptivePlanner = () => {
